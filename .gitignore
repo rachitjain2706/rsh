@@ -1,5 +1,7 @@
 # Prerequisites
 *.d
+*.vscode
+.DS_Store
 
 # Compiled Object files
 *.slo
@@ -30,3 +32,9 @@
 *.exe
 *.out
 *.app
+
+# Files
+ref2.cpp
+References.txt
+ref.cpp
+rsh
