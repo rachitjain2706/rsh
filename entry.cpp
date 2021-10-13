@@ -9,7 +9,7 @@
 
 using namespace std;
 
-string commands[3] = {"ls", "cd", "exit"};
+string commands[4] = {"cd", "exit", "jobs", "fg"};
 
 string get_current_directory() {
     char dir[256];
@@ -29,23 +29,57 @@ vector<string> word_separation(string input) {
     return words;
 }
 
-void parse_arguments() {
-
+void ctrlchandler(int signal) {
+    cout << "Signal interrupted" << endl;
+    // exit(1);
 }
 
-bool parse_token(string token, string current_dir) {
-    if (token == "ls") {
-        char *inp = convert_string_to_char(current_dir);
-        implement_ls(inp);
-    } else if (token == "exit") {
-        exit(1);
+void ctrldhandler(int signal) {
+    cout << "Signal stopped" << endl;
+    // exit(1);
+}
+
+void ctrlqhandler(int signal) {
+    cout << "Signal quit" << endl;
+    // exit(1);
+}
+
+void ctrlthandler(int signal) {
+    cout << "Signal term" << endl;
+    // exit(1);
+}
+
+void register_signal_handlers() {
+    signal(SIGINT, ctrlchandler);
+    signal(SIGTSTP, ctrldhandler);
+    signal(SIGQUIT, ctrlqhandler);
+    signal(SIGTERM, ctrlthandler);
+}
+
+int implement_cd(vector<string> tokens) {
+    if (tokens[1].empty()) {
+        cout << "No path given for cd";
     } else {
-        cout << "No valid token found" << endl;
+        vector<char *> charVec(tokens.size(), nullptr);
+    
+        for (int i = 0; i < tokens.size(); i++) {
+            charVec[i] = &tokens[i][0];
+        }
+        charVec.push_back(NULL);
+
+        char **inps = &charVec[0];
+        if (chdir(inps[1]) != 0) {
+            perror("Error in cd");
+        }
     }
-    return true;
+    return 1;
 }
 
-int begin_ls(vector<string> tokens) {
+void noth() {
+    cout << "Parent process signal handler" << endl;
+}
+
+int implement_other_commands(vector<string> tokens) {
     pid_t pid, wpid;
     int status;
 
@@ -64,9 +98,6 @@ int begin_ls(vector<string> tokens) {
 
     char **inps = &charVec[0];
 
-    // TODO: Fix multiple arguments
-    // TODO: Fix bad address error sometimes
-
     // for(vector<string>::const_iterator i = tokens.begin(); i != tokens.end(); i++) {
     //     cout << *i << endl;
     // }
@@ -74,12 +105,15 @@ int begin_ls(vector<string> tokens) {
     pid = fork();
     if (pid == 0) {
         // This is the child process
+        register_signal_handlers();
+//        signal(SIGINT, ctrlchandler);
         if (execvp(inps[0], inps) == -1) {
             perror("Error in ls");
         }
     } else if (pid < 0) {
         perror("Error in forking");
     } else {
+        signal(SIGINT, reinterpret_cast<void (*)(int)>(noth));
         do {
             wpid = waitpid(pid, &status, WUNTRACED);
         } while(!WIFEXITED(status) && !WIFSIGNALED(status));
@@ -92,7 +126,24 @@ bool is_keyword(string input, string current_dir) {
     char* c_i = strcpy(new char[input.length() + 1], input.c_str());
     vector<string> tokens = word_separation(input);
     // tokens.push_back(NULL);
-    begin_ls(tokens);
+    if (tokens[0] == "cd") {
+        char *inp = convert_string_to_char(current_dir);
+        implement_cd(tokens);
+        cout << tokens[1] << endl;
+    } else if (tokens[0] == "exit") {
+        exit(1);
+    } else if(tokens[0] == "job") {
+        cout << "JOB" << endl;
+        exit(1);
+    } else if(tokens[0] == "fg") {
+        cout << "FG" << endl;
+        exit(1);
+    } /*else if (tokens[0] == "cat") {
+        implement_cat(tokens);
+    } */else {
+        implement_other_commands(tokens);
+        //cout << "No valid token found" << endl;
+    }
     // if (input == "ls") {
     //     implement_ls(tokens.);
     // }
@@ -121,28 +172,9 @@ bool is_keyword(string input, string current_dir) {
     return false;
 }
 
-void ctrlchandler(int signal) {
-    cout << "Signal interrupted" << endl;
-    exit(1);
-}
-
-void register_signal_handlers() {
-    signal(SIGINT, ctrlchandler);
-}
-
-void begin_rsh() {
-    // pid_t pid, wpid;
-    // pid = fork();
-    // if (pid == 0) {
-    //     // This is the child process
-    //     if (execvp())
-    // }
-}
-
 int main(int argc, char *argv[]) {
-    register_signal_handlers();
+//    register_signal_handlers();
     string parent_dir = get_current_directory();
-    cout << parent_dir << endl;
     do {
         string current_dir = get_current_directory();
         string dir = "";
@@ -158,6 +190,9 @@ int main(int argc, char *argv[]) {
             continue;
         }
         bool keyword = is_keyword(text, current_dir);
+        // if (keyword == false) {
+        //     return 0;
+        // }
     } while(1);
     return 0;
 }
