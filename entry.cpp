@@ -55,11 +55,12 @@ int begin_ls(vector<string> tokens) {
     //     pointerVec[i] = tokens[i].data();
     // }
     // char **inp_tokens = pointerVec.data();
-
     vector<char *> charVec(tokens.size(), nullptr);
+    
     for (int i = 0; i < tokens.size(); i++) {
         charVec[i] = &tokens[i][0];
     }
+    charVec.push_back(NULL);
 
     char **inps = &charVec[0];
 
