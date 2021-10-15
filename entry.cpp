@@ -68,7 +68,9 @@ void register_signal_handlers() {
 
 int implement_cd(vector<string> tokens) {
     if (tokens[1].empty()) {
-//        cout << "No path given for cd";
+        cout << "No path given for cd" << endl;
+    } else if (tokens.size() > 2) {
+        cout << "Too many arguments for cd" << endl;
     } else {
         vector<char *> charVec(tokens.size(), nullptr);
         for (int i = 0; i < tokens.size(); i++) {
@@ -133,52 +135,6 @@ int implement_pipe(vector<string> tokens) {
 }
 
 int implement_cat(vector<string> tokens) {
-    int in, out;
-    vector<char *> charVec(tokens.size(), nullptr);
-    string inp_path = "";
-    string out_path = "";
-    bool flag1 = false, flag2 = false;
-    for (int i = 0; i < tokens.size(); i++) {
-        if (tokens[i] == "<") {
-            inp_path = tokens[i + 1];
-            flag1 = true;
-            continue;
-        }
-        if (flag1) {
-            flag1 = false;
-            continue;
-        }
-        if (tokens[i] == ">") {
-            out_path = tokens[i + 1];
-            flag2 = true;
-            continue;
-        }
-        if (flag2) {
-            flag1 = false;
-            continue;
-        } else {
-            charVec[i] = &tokens[i][0];
-            cout << charVec[i] << endl;
-        }
-    }
-    charVec.push_back(NULL);
-
-    cout << "Input - " << inp_path << endl;
-    cout << "Output - " << out_path << endl;
-
-    char **inps = &charVec[0];
-    if (!inp_path.empty()) {
-        char *in_path = convert_string_to_char(inp_path);
-        in = open(in_path, O_RDONLY);
-        dup2(in, 0);
-        close(in);
-    }
-    if (!out_path.empty()) {
-        char *op_path = convert_string_to_char(out_path);
-        out = open(op_path, O_WRONLY | O_TRUNC | O_CREAT, S_IRUSR | S_IRGRP | S_IWGRP | S_IWUSR);
-        dup2(out, 1);
-        close(out);
-    }
     /*in = open(inps[1], O_RDONLY);
     if (in == -1) {
 //        cout << "File not present" << endl;
@@ -193,13 +149,89 @@ int implement_cat(vector<string> tokens) {
 
     close(in);
     close(out);*/
+    int pid, wpid, status;
+    pid = fork();
+    if (pid == 0) {
+        int in, out;
+        vector<char *> charVec(tokens.size(), nullptr);
+        string inp_path = "";
+        string out_path = "";
+        string out_append_path = "";
+        bool flag1 = false, flag2 = false, flag3 = false;
+        for (int i = 0; i < tokens.size(); i++) {
+            if (tokens[i] == "<") {
+                if (tokens.size() == i + 1) {
+                    cout << "No input params" << endl;
+                    return 1;
+                }
+                inp_path = tokens[i + 1];
+                flag1 = true;
+                continue;
+            }
+            if (flag1) {
+                flag1 = false;
+                continue;
+            }
+            if (tokens[i] == ">") {
+                out_path = tokens[i + 1];
+                flag2 = true;
+                continue;
+            }
+            if (flag2) {
+                flag1 = false;
+                continue;
+            }
+            if (tokens[i] == ">>") {
+                out_append_path = tokens[i + 1];
+                flag3 = true;
+                continue;
+            }
+            if (flag3) {
+                flag3 = false;
+                continue;
+            } else {
+                charVec[i] = &tokens[i][0];
+//            cout << charVec[i] << endl;
+            }
+        }
+        charVec.push_back(NULL);
 
-    execvp(inps[0], inps);
+        char **inps = &charVec[0];
+        if (!inp_path.empty()) {
+            char *in_path = convert_string_to_char(inp_path);
+            in = open(in_path, O_RDONLY);
+            dup2(in, 0);
+            close(in);
+        }
+        if (!out_path.empty()) {
+            char *op_path = convert_string_to_char(out_path);
+            out = open(op_path, O_WRONLY | O_TRUNC | O_CREAT, S_IRUSR | S_IRGRP | S_IWGRP | S_IWUSR);
+            dup2(out, 1);
+            close(out);
+        }
+
+        if (!out_append_path.empty()) {
+            char *op_path = convert_string_to_char(out_append_path);
+            out = open(op_path, O_WRONLY | O_APPEND);
+            dup2(out, 1);
+            close(out);
+        }
+        if (execvp(inps[0], inps) == -1) {
+            perror("Error in cat");
+        }
+        exit(EXIT_FAILURE);
+    } else if (pid < 0) {
+        perror("Error in forking");
+    } else {
+        do {
+            wpid = waitpid(pid, &status, WUNTRACED);
+        } while (!WIFEXITED(status) && !WIFSIGNALED(status));
+    }
+//    execvp(inps[0], inps);
     return 1;
 }
 
 int implement_other_commands(vector<string> tokens) {
-    cout << "implement_other_commands" << endl;
     pid_t pid, wpid;
     int status;
 
@@ -225,7 +257,7 @@ int implement_other_commands(vector<string> tokens) {
         signal(SIGQUIT, SIG_DFL);
         signal(SIGTERM, SIG_DFL);
         if (execvp(inps[0], inps) == -1) {
-//            perror("Error in ls");
+            perror("Error in ls");
         }
         /*signal(SIGINT, SIG_DFL);
         signal(SIGTSTP, SIG_DFL);
@@ -267,6 +299,9 @@ bool is_keyword(string input) {
         implement_cat(tokens);
 //        cout << "Redirection" << endl;
     } else if (std::find(tokens.begin(), tokens.end(), ">") != tokens.end()) {
+        implement_cat(tokens);
+//        cout << "Redirection" << endl;
+    } else if (std::find(tokens.begin(), tokens.end(), ">>") != tokens.end()) {
         implement_cat(tokens);
 //        cout << "Redirection" << endl;
     } else if (std::find(tokens.begin(), tokens.end(), "|") != tokens.end()) {
