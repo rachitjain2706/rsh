@@ -8,6 +8,8 @@
 #include <sys/fcntl.h>
 #include <csignal>
 #include "util.h"
+#include "stdlib.h"
+#include "cstring"
 
 using namespace std;
 
@@ -57,6 +59,7 @@ void ctrlthandler(int signal) {
 
 void signal_handler_new_line(int signal) {
     cout << endl;
+    fflush(stdout);
 }
 
 void register_signal_handlers() {
@@ -68,9 +71,11 @@ void register_signal_handlers() {
 
 int implement_cd(vector<string> tokens) {
     if (tokens[1].empty()) {
-        cout << "No path given for cd" << endl;
+        cout << "Error: Invalid command" << endl;
+        fflush(stdout);
     } else if (tokens.size() > 2) {
-        cout << "Too many arguments for cd" << endl;
+        cout << "Error: Invalid command" << endl;
+        fflush(stdout);
     } else {
         vector<char *> charVec(tokens.size(), nullptr);
         for (int i = 0; i < tokens.size(); i++) {
@@ -80,7 +85,9 @@ int implement_cd(vector<string> tokens) {
 
         char **inps = &charVec[0];
         if (chdir(inps[1]) != 0) {
-            perror("Error in cd");
+//            perror("Error in cd");
+            cout << "Error: Invalid directory" << endl;
+            fflush(stdout);
         }
     }
     return 1;
@@ -91,19 +98,341 @@ void noth() {
 }
 
 int implement_pipe(vector<string> tokens) {
-    vector<vector<string> > pipe_vector(tokens.size());
+    size_t num_pipes = std::count(tokens.begin(), tokens.end(), "|");
+//    cout << num_pipes << endl;
+    bool flag = false;
+    vector<char *> charVec1(tokens.size(), nullptr);
+    vector<char *> charVec2(tokens.size(), nullptr);
     int j = 0;
+    for (int i = 0; i < tokens.size(); i++) {
+        if (tokens[i] == "|") {
+            flag = true;
+            charVec1.push_back(NULL);
+            continue;
+        }
+        if (!flag) {
+            charVec1[i] = &tokens[i][0];
+        } else {
+            charVec2[j] = &tokens[i][0];
+            j++;
+        }
+    }
+    charVec2.push_back(NULL);
+    char **inps1 = &charVec1[0];
+    char **inps2 = &charVec2[0];
+
+    int pipefd[2];
+    int pid, wpid, status;
+
+    pipe(pipefd);
+    pid = fork();
+
+    if (pid == 0) {
+        dup2(pipefd[0], 0);
+        close(pipefd[1]);
+        if (execvp(inps2[0], inps2) == -1) {
+            perror("Error in pipe");
+        }
+        cout << endl;
+        fflush(stdout);
+        exit(EXIT_FAILURE);
+    } else {
+        dup2(pipefd[1], 1);
+        close(pipefd[0]);
+        execvp(inps1[0], inps1);
+        do {
+            wpid = waitpid(pid, &status, WUNTRACED);
+        } while (!WIFEXITED(status) && !WIFSIGNALED(status));
+    }
+
+    return 1;
+}
+
+int implement_mul_pipe(vector<string> tokens) {
+    size_t num_pipes = std::count(tokens.begin(), tokens.end(), "|");
+    int numberOfPipes = 0;
+//    cout << num_pipes << endl;
+//    char **pipe_vector[num_pipes];
+    int k = 0;
+    vector<char **> piping;
+    vector<vector<string>> pipe_vector;
+    vector<string> tempCharVec;
+    int j = 0;
+    for (const string &token: tokens) {
+        if (token == "|") {
+            numberOfPipes++;
+            pipe_vector.push_back(tempCharVec);
+            tempCharVec.clear();
+            continue;
+        }
+        tempCharVec.push_back(token);
+    }
+    pipe_vector.push_back(tempCharVec);
+
+    for (vector<string> &a: pipe_vector) {
+        int k = 0;
+        char **inp = static_cast<char **>(malloc(sizeof(char *) * (a.size() + 1)));
+        for (auto &st: a) {
+            char *inner_inp = static_cast<char *>(malloc((st.size() + 1) * sizeof(char)));
+            std::strcpy(inner_inp, st.c_str());
+            inner_inp[st.size()] = '\0';
+            inp[k] = inner_inp;
+            k++;
+        }
+        inp[k] = NULL;
+        piping.push_back(inp);
+    }
+
+//    cout << piping.size() << endl;
+
+//    cout << piping[0][0] << endl;
+//    cout << piping[1][0] << endl;
+//    cout << piping[1][1] << endl;
+
+    /*for(const vector<string>& a : pipe_vector){
+        for(const string& b: a){
+            cout<< " " << b;
+        }
+        cout << endl;
+    }*/
+
+    /*for (vector<string> &a: pipe_vector) {
+        vector<char *> charVec;
+        charVec.reserve(a.size());
+        for (auto &i: a) {
+            charVec.push_back(&i[0]);
+//            cout << &i[0] << " ";
+        }
+        charVec.emplace_back(nullptr);
+        char **inputs = &charVec[0];
+        piping.push_back(inputs);
+    }*/
+
+    /*for(vector<string> &a: pipe_vector) {
+        vector<char*> pointerVec(a.size());
+        for(unsigned i = 0; i < a.size(); ++i)
+        {
+            pointerVec[i] = a[i].data();
+        } //you can use transform instead of this loop
+        char** result = pointerVec.data();
+    }*/
+
+    /*for (vector<string> &a: pipe_vector) {
+        std::vector<char *> charVec;
+        for (int i = 0; i < a.size(); i++) {
+            charVec[i] = a[i].c_str();
+        }
+        cout << charVec[0] << endl;
+    }*/
+
+//    cout << piping[0][0] << " - " << piping[1][0] << endl;
+
+    /*for (const auto &command: pipe_vector) {
+        int commandsArrayLength = 0;
+        char **commandsArray;
+        for (const auto &token: command) {
+            int n = int(token.length());
+            char commandArray[n + 1];
+            strcpy(commandArray, token.c_str());
+        }
+        commandsArray[commandsArrayLength++] = commandsArray;
+    }*/
+
+    /*for (int k = 0; k < piping.size(); k++) {
+
+        cout << *piping.at(k) << endl;
+    }*/
+
+    /*for(const vector<char *>& a : piping){
+        for(const char& b: a){
+            cout << " " << b;
+        }
+        cout << endl;
+    }*/
+
+
+//    for(const vector<string>& a : pipe_vector){
+//        for(const string& b: a){
+//            cout<< " " << b;
+//        }
+//        cout << endl;
+//    }
+//    cout << pipe_vector.at(0).at(0) << endl;
+//    cout << pipe_vector.at(1).at(0) << endl;
+
+//    for(int k = 0; k < 2*num_pipes; k++) {
+//        char **inps1 = &pipe_vector[k][0];
+//        piping.push_back(inps1);
+//    }
+    /*for (int i = 0; i < tokens.size(); i++) {
+        if (tokens[i] == "|") {
+            charVec1.push_back(NULL);
+            char **inps1 = &charVec1[0];
+//            piping.push_back(inps1);
+//            pipe_vector[k] = inps1;
+            pipe_vector.push_back(charVec1);
+            k++;
+            j = 0;
+            vector<char *> charVec1(tokens.size(), nullptr);
+            continue;
+        }
+        charVec1.push_back(&tokens[i][0]);*/
+//        j++;
+    //}
+
+    int pipefd[2 * num_pipes];
+    int pid, wpid, status;
+
+    for (int i = 0; i < (num_pipes); i++) {
+        if (pipe(pipefd + (i * 2)) < 0) {
+            perror("couldn't pipe");
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    int lp = 0;
+    int commands = piping.size();
+    int index = 0;
+    while (commands != 0) {
+        pid = fork();
+        if (pid == 0) {
+
+            if (index != piping.size() - 1) {
+                if (dup2(pipefd[index * 2 + 1], 1) < 0) {
+                    cout << "DUP2 output" << endl;
+                    exit(EXIT_FAILURE);
+                }
+            }
+//            cout << "DUP2 working output " << pipefd[index*2 + 1] << " with index - " << index << endl;
+
+            if (index != 0) {
+                /*if (dup2(pipefd[(index - 1)*2], 0) < 0) {
+                    cout << "DUP2 input " << pipefd[(index - 1)*2] << " with index - " << index << endl;
+                    exit(EXIT_FAILURE);
+                }*/
+                dup2(pipefd[(index - 1) * 2], 0);
+            }
+//            cout << "DUP2 working input " << pipefd[(index - 1)*2] << " with index - " << index << endl;
+
+
+
+            for (int x = 0; x < 2 * num_pipes; x++) {
+                close(pipefd[x]);
+            }
+            if (execvp(piping[index][0], piping[index]) < 0) {
+                cout << "Error in execvp pipe" << endl;
+                exit(EXIT_FAILURE);
+            }
+        } else if (pid < 0) {
+            cout << "Error in forking" << endl;
+            exit(EXIT_FAILURE);
+        }
+        commands--;
+        index++;
+    }
+
+    for (int i = 0; i < 2 * num_pipes; i++) {
+        close(pipefd[i]);
+    }
+    for (int i = 0; i < num_pipes + 1; i++) {
+        wait(&status);
+    }
+
+
+    /*if (pid == 0) {
+        dup2(pipefd[0], 0);
+        close(pipefd[1]);
+        if (execvp(piping[1][0], piping[1]) == -1) {
+            perror("Error in pipe");
+        }
+        cout << endl;
+        fflush(stdout);
+        exit(EXIT_FAILURE);
+    } else {
+        dup2(pipefd[1], 1);
+        close(pipefd[0]);
+        execvp(piping[0][0], piping[0]);
+        do {
+            wpid = waitpid(pid, &status, WUNTRACED);
+        } while (!WIFEXITED(status) && !WIFSIGNALED(status));
+    }*/
+
+    return 1;
+}
+
+/*int implement_pipe(vector<string> tokens) {
+    vector<char **> pipe_vector(tokens.size());
+    int j = 0;
+    *//*vector<char *> charVec(tokens.size(), nullptr);
     for (vector<string>::const_iterator i = tokens.begin(); i != tokens.end(); i++) {
         if (*i == "|") {
+            charVec.push_back(NULL);
+//            cout << *charVec << endl;
+            char **inps = &charVec[0];
+            cout << inps[0] << endl;
+            pipe_vector.push_back(inps);
+            cout << pipe_vector[1] << endl;
             j++;
-//            cout << "Pipe operator" << endl;
+            vector<char *> charVec(tokens.size(), nullptr);
             continue;
         }
 //        cout << typeid(*i).name() << endl;
-        pipe_vector[j].push_back(*i);
-        cout << pipe_vector[j][0] << endl;
+        char *val = convert_string_to_char(*i);
+//        cout << "Value - " << val << endl;
+
+        charVec.push_back(val);
+//        cout << charVec[]
+//        cout << typeid(charVec).name() << endl;
+//        pipe_vector[j].push_back(charVec);
+//        cout << pipe_vector[j][0] << endl;
     }
-    /*bool flag = true;
+//    cout << pipe_vector[0][0] << endl;
+    fflush(stdout);*//*
+
+    vector<char *> charVec(tokens.size(), nullptr);
+    for (int i = 0; i < tokens.size(); i++) {
+        if (tokens[i] == "|") {
+            j++;
+            charVec.push_back(NULL);
+            char **inps = &charVec[0];
+            pipe_vector.push_back(inps);
+            continue;
+        }
+        charVec[i] = &tokens[i][0];
+//        cout << charVec[i] << endl;
+    }
+    cout << pipe_vector[0][0] << endl;
+
+    *//*int in, out;
+    vector<char *> charVec(tokens.size(), nullptr);
+    string inp_path = "";
+    bool flag1 = false, flag2 = false, flag3 = false;
+    for (int k = 0; k <= j; k++) {
+        for (int i = 0; i < pipe_vector[k].size(); i++) {
+            charVec[i] = &pipe_vector[k][i][0];
+        }
+        charVec.push_back(NULL);
+    }
+
+    char **inps = &charVec[0];*//*
+
+    int pipefd[2];
+    int pid;
+
+    pipe(pipefd);
+
+    pid = fork();
+
+    if (pid == 0) {
+        dup2(pipefd[0], 0);
+        close(pipefd[1]);
+        execvp(pipe_vector[0][0], pipe_vector[0]);
+    } else {
+        dup2(pipefd[1], 1);
+        close(pipefd[0]);
+        execvp(pipe_vector[1][0], pipe_vector[1]);
+    }
+    *//*bool flag = true;
     vector<char *> arr1(tokens.size(), nullptr);
     vector<char *> arr2(tokens.size(), nullptr);
     for (int i = 0; i < tokens.size(); i++) {
@@ -125,14 +454,11 @@ int implement_pipe(vector<string> tokens) {
     cout << arr1.size() << endl;
     cout << arr2.size() << endl;
     cout << arr2[3] << endl;
-    arr2.push_back(NULL);*/
+    arr2.push_back(NULL);*//*
 //    char **inps = &arr1[0];
 
-    int pipefd[2];
-    int pid;
-
     return 1;
-}
+}*/
 
 int implement_cat(vector<string> tokens) {
     /*in = open(inps[1], O_RDONLY);
@@ -161,7 +487,8 @@ int implement_cat(vector<string> tokens) {
         for (int i = 0; i < tokens.size(); i++) {
             if (tokens[i] == "<") {
                 if (tokens.size() == i + 1) {
-                    cout << "No input params" << endl;
+                    cout << "Error: Invalid command" << endl;
+                    fflush(stdout);
                     return 1;
                 }
                 inp_path = tokens[i + 1];
@@ -173,6 +500,11 @@ int implement_cat(vector<string> tokens) {
                 continue;
             }
             if (tokens[i] == ">") {
+                if (tokens.size() == i + 1) {
+                    cout << "Error: Invalid command" << endl;
+                    fflush(stdout);
+                    return 1;
+                }
                 out_path = tokens[i + 1];
                 flag2 = true;
                 continue;
@@ -219,6 +551,8 @@ int implement_cat(vector<string> tokens) {
         if (execvp(inps[0], inps) == -1) {
             perror("Error in cat");
         }
+        cout << endl;
+        fflush(stdout);
         exit(EXIT_FAILURE);
     } else if (pid < 0) {
         perror("Error in forking");
@@ -257,7 +591,10 @@ int implement_other_commands(vector<string> tokens) {
         signal(SIGQUIT, SIG_DFL);
         signal(SIGTERM, SIG_DFL);
         if (execvp(inps[0], inps) == -1) {
-            perror("Error in ls");
+//            perror("Error: Invalid command");
+            cout << "Error: Invalid command" << endl;
+            fflush(stdout);
+            exit(EXIT_FAILURE);
         }
         /*signal(SIGINT, SIG_DFL);
         signal(SIGTSTP, SIG_DFL);
@@ -265,6 +602,8 @@ int implement_other_commands(vector<string> tokens) {
         signal(SIGTERM, SIG_DFL);*/
         /*int ppid = getpid();
         cout << "Child - " << ppid << endl;*/
+        cout << endl;
+        fflush(stdout);
         exit(EXIT_FAILURE);
 //        register_signal_handlers();
     } else if (pid < 0) {
@@ -282,13 +621,24 @@ int implement_other_commands(vector<string> tokens) {
     return 1;
 }
 
+int implement_exit(vector<string> tokens) {
+    if (tokens.size() > 1) {
+        cout << "Error: Invalid command" << endl;
+        fflush(stdout);
+        return 1;
+    }
+    cout << endl;
+    fflush(stdout);
+    exit(1);
+}
+
 bool is_keyword(string input) {
     vector<string> tokens = word_separation(input);
     if (tokens[0] == "cd") {
         implement_cd(tokens);
 //        cout << tokens[1] << endl;
     } else if (tokens[0] == "exit") {
-        exit(1);
+        implement_exit(tokens);
     } else if (tokens[0] == "job") {
 //        cout << "JOB" << endl;
         exit(1);
@@ -305,7 +655,7 @@ bool is_keyword(string input) {
         implement_cat(tokens);
 //        cout << "Redirection" << endl;
     } else if (std::find(tokens.begin(), tokens.end(), "|") != tokens.end()) {
-        implement_pipe(tokens);
+        implement_mul_pipe(tokens);
 //        cout << "Piping" << endl;
     } else {
         implement_other_commands(tokens);
@@ -352,11 +702,12 @@ int main(int argc, char *argv[]) {
         }
         string dir = "";
         dir = current_dir;
-        cout << "[nyush " << dir << "] $ ";
+        cout << "[nyush " << dir << "]$ ";
+        fflush(stdout);
         string text = "";
         std::getline(std::cin, text);
         if (cin.eof()) {
-//            cout << "EOF cin" << endl;
+            cout << endl;
             fflush(stdout);
             return 0;
         }
@@ -368,5 +719,7 @@ int main(int argc, char *argv[]) {
         //     return 0;
         // }
     } while (1);
+    cout << endl;
+    fflush(stdout);
     return 0;
 }

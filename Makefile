@@ -1,6 +1,6 @@
 .PHONY: all
 all: 
-	@ g++ entry.cpp -o rsh
+	@ g++ -std=c++1y entry.cpp -o rsh
 
 clean:
 	@ rm rsh

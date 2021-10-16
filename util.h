@@ -17,7 +17,6 @@ char **convert_vector_string_to_vector_char(vector<string> tokens) {
         charVec[i] = &tokens[i][0];
     }
     charVec.push_back(NULL);
-
     char **inps = &charVec[0];
     return inps;
 }
