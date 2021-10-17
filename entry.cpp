@@ -22,6 +22,11 @@ string get_current_directory() {
     return str_dir;
 }
 
+vector<vector<string>> cmds;
+vector<int> jobs;
+vector<bool> display;
+int next_index = 0;
+
 vector<string> word_separation(string input) {
     string word;
     vector<string> words;
@@ -57,8 +62,17 @@ void ctrlthandler(int signal) {
     // exit(1);
 }
 
-void signal_handler_new_line(int signal) {
+void signal_handler_new_line(int sgnl) {
     cout << endl;
+    if (sgnl == SIGINT) {
+        signal(SIGINT, signal_handler_new_line);
+    } else if (sgnl == SIGTSTP) {
+        signal(SIGTSTP, signal_handler_new_line);
+    } else if (sgnl == SIGQUIT) {
+        signal(SIGQUIT, signal_handler_new_line);
+    } else if (sgnl == SIGTERM) {
+        signal(SIGTERM, signal_handler_new_line);
+    }
     fflush(stdout);
 }
 
@@ -71,11 +85,11 @@ void register_signal_handlers() {
 
 int implement_cd(vector<string> tokens) {
     if (tokens[1].empty()) {
-        cout << "Error: Invalid command" << endl;
-        fflush(stdout);
+        fprintf(stderr, "Error: invalid command\n");
+        fflush(stderr);
     } else if (tokens.size() > 2) {
-        cout << "Error: Invalid command" << endl;
-        fflush(stdout);
+        fprintf(stderr, "Error: invalid command\n");
+        fflush(stderr);
     } else {
         vector<char *> charVec(tokens.size(), nullptr);
         for (int i = 0; i < tokens.size(); i++) {
@@ -86,8 +100,8 @@ int implement_cd(vector<string> tokens) {
         char **inps = &charVec[0];
         if (chdir(inps[1]) != 0) {
 //            perror("Error in cd");
-            cout << "Error: Invalid directory" << endl;
-            fflush(stdout);
+            fprintf(stderr, "Error: invalid directory\n");
+            fflush(stderr);
         }
     }
     return 1;
@@ -158,14 +172,26 @@ int implement_mul_pipe(vector<string> tokens) {
     vector<vector<string>> pipe_vector;
     vector<string> tempCharVec;
     int j = 0;
+    int ind = 0;
     for (const string &token: tokens) {
         if (token == "|") {
+            if (ind == 0) {
+                fprintf(stderr, "Error: invalid command\n");
+                fflush(stderr);
+                return 1;
+            }
             numberOfPipes++;
             pipe_vector.push_back(tempCharVec);
             tempCharVec.clear();
             continue;
         }
+        ind++;
         tempCharVec.push_back(token);
+    }
+    if (tempCharVec.empty()) {
+        fprintf(stderr, "Error: invalid command\n");
+        fflush(stderr);
+        return 1;
     }
     pipe_vector.push_back(tempCharVec);
 
@@ -285,7 +311,8 @@ int implement_mul_pipe(vector<string> tokens) {
 
     for (int i = 0; i < (num_pipes); i++) {
         if (pipe(pipefd + (i * 2)) < 0) {
-            perror("couldn't pipe");
+            cout << endl;
+            fflush(stdout);
             exit(EXIT_FAILURE);
         }
     }
@@ -300,6 +327,8 @@ int implement_mul_pipe(vector<string> tokens) {
             if (index != piping.size() - 1) {
                 if (dup2(pipefd[index * 2 + 1], 1) < 0) {
                     cout << "DUP2 output" << endl;
+                    cout << endl;
+                    fflush(stdout);
                     exit(EXIT_FAILURE);
                 }
             }
@@ -321,10 +350,14 @@ int implement_mul_pipe(vector<string> tokens) {
             }
             if (execvp(piping[index][0], piping[index]) < 0) {
                 cout << "Error in execvp pipe" << endl;
+                cout << endl;
+                fflush(stdout);
                 exit(EXIT_FAILURE);
             }
         } else if (pid < 0) {
             cout << "Error in forking" << endl;
+            cout << endl;
+            fflush(stdout);
             exit(EXIT_FAILURE);
         }
         commands--;
@@ -487,11 +520,16 @@ int implement_cat(vector<string> tokens) {
         for (int i = 0; i < tokens.size(); i++) {
             if (tokens[i] == "<") {
                 if (tokens.size() == i + 1) {
-                    cout << "Error: Invalid command" << endl;
-                    fflush(stdout);
+                    fprintf(stderr, "Error: invalid command\n");
+                    fflush(stderr);
                     return 1;
                 }
                 inp_path = tokens[i + 1];
+                if (access(convert_string_to_char(inp_path), F_OK) != 0) {
+                    fprintf(stderr, "Error: invalid file\n");
+                    fflush(stderr);
+                    return 1;
+                }
                 flag1 = true;
                 continue;
             }
@@ -501,8 +539,8 @@ int implement_cat(vector<string> tokens) {
             }
             if (tokens[i] == ">") {
                 if (tokens.size() == i + 1) {
-                    cout << "Error: Invalid command" << endl;
-                    fflush(stdout);
+                    fprintf(stderr, "Error: invalid command\n");
+                    fflush(stderr);
                     return 1;
                 }
                 out_path = tokens[i + 1];
@@ -579,21 +617,22 @@ int implement_other_commands(vector<string> tokens) {
     char **inps = &charVec[0];
 
     pid = fork();
+    int cpid;
     if (pid == 0) {
         // This is the child process
         // cout << "In child process" << endl;
 //        register_signal_handlers();
 //        pause();
-        /*int ppid = getpid();
-        cout << "Child - " << ppid << endl;*/
+        cpid = getpid();
+        /*cout << "Child - " << ppid << endl;*/
         signal(SIGINT, SIG_DFL);
         signal(SIGTSTP, SIG_DFL);
         signal(SIGQUIT, SIG_DFL);
         signal(SIGTERM, SIG_DFL);
         if (execvp(inps[0], inps) == -1) {
 //            perror("Error: Invalid command");
-            cout << "Error: Invalid command" << endl;
-            fflush(stdout);
+            fprintf(stderr, "Error: invalid command");
+            fflush(stderr);
             exit(EXIT_FAILURE);
         }
         /*signal(SIGINT, SIG_DFL);
@@ -608,12 +647,24 @@ int implement_other_commands(vector<string> tokens) {
 //        register_signal_handlers();
     } else if (pid < 0) {
 //        perror("Error in forking");
+//        exit()
     } else {
 //        signal(SIGINT, reinterpret_cast<void (*)(int)>(noth));
 //        pause();
-
         //do {
         wpid = waitpid(pid, &status, WUNTRACED);
+//        cout << status << endl;
+        if (status < 0) {
+//            cout << "";
+//            exit(EXIT_FAILURE);
+        }
+        if (WIFSTOPPED(status)) {
+            cout << "Process stopped - " << pid << endl;
+            cmds.push_back(tokens);
+            jobs.push_back(pid);
+            display.push_back(true);
+            next_index++;
+        }
 //            int ppid = getpid();
 //            cout << "Parent - " << ppid << " for - " << wpid << endl;
         //} while (!WIFEXITED(status) && !WIFSIGNALED(status));
@@ -623,43 +674,93 @@ int implement_other_commands(vector<string> tokens) {
 
 int implement_exit(vector<string> tokens) {
     if (tokens.size() > 1) {
-        cout << "Error: Invalid command" << endl;
-        fflush(stdout);
+//        cout << "Error: Invalid command" << endl;
+        fprintf(stderr, "Error: invalid command\n");
+        fflush(stderr);
         return 1;
+    }
+    for (int i = 0; i < cmds.size(); i++) {
+        if (display[i]) {
+//            cout << "Error: there are suspended jobs" << endl;
+            fprintf(stderr, "Error: there are suspended jobs\n");
+            fflush(stderr);
+            return 1;
+        }
     }
     cout << endl;
     fflush(stdout);
     exit(1);
 }
 
+int implement_jobs() {
+    for (int i = 0; i < next_index; i++) {
+        if (display[i]) {
+            cout << "[" << (i + 1) << "] " << cmds[i][0] << endl;// << " - " << jobs[i];
+            fflush(stdout);
+        }
+    }
+    return 1;
+}
+
+int implement_fg(vector<string> tokens) {
+    if (tokens.size() != 2) {
+//        cout << "Error: Invalid command" << endl;
+        fprintf(stderr, "Error: invalid command\n");
+        fflush(stderr);
+        return 1;
+//        exit(EXIT_FAILURE);
+    }
+    int index = stoi(tokens[1]);
+    if (index < 0) {
+        fprintf(stderr, "Error: invalid job\n");
+        fflush(stderr);
+        return 1;
+//        exit(EXIT_FAILURE);
+    }
+    int len = 0;
+    for (int i = 0; i < next_index; i++) {
+        if (display[i]) {
+            len++;
+        }
+    }
+    if (len <= 0 || (len < index - 1) || index == 0) {
+        fprintf(stderr, "Error: invalid job\n");
+        fflush(stderr);
+        return 1;
+//        exit(EXIT_FAILURE);
+    }
+//    cmds.erase(std::remove(cmds.begin(), cmds.end(), index-1), cmds.end());
+//    cmds.erase(std::next(cmds.begin(), index-1), std::next(cmds.begin(), index));
+//    jobs.erase(std::next(jobs.begin(), index-1), std::next(jobs.begin(), index));
+//    jobs.erase(std::remove(jobs.begin(), jobs.end(), index-1), jobs.end());
+    display[index - 1] = false;
+    return 1;
+}
+
 bool is_keyword(string input) {
     vector<string> tokens = word_separation(input);
     if (tokens[0] == "cd") {
         implement_cd(tokens);
-//        cout << tokens[1] << endl;
     } else if (tokens[0] == "exit") {
         implement_exit(tokens);
-    } else if (tokens[0] == "job") {
-//        cout << "JOB" << endl;
-        exit(1);
+    } else if (tokens[0] == "jobs") {
+        implement_jobs();
     } else if (tokens[0] == "fg") {
-//        cout << "FG" << endl;
-        exit(1);
+        implement_fg(tokens);
+    } else if (std::find(tokens.begin(), tokens.end(), "<<") != tokens.end()) {
+        fprintf(stderr, "Error: invalid command\n");
+        fflush(stderr);
+        return false;
     } else if (std::find(tokens.begin(), tokens.end(), "<") != tokens.end()) {
         implement_cat(tokens);
-//        cout << "Redirection" << endl;
     } else if (std::find(tokens.begin(), tokens.end(), ">") != tokens.end()) {
         implement_cat(tokens);
-//        cout << "Redirection" << endl;
     } else if (std::find(tokens.begin(), tokens.end(), ">>") != tokens.end()) {
         implement_cat(tokens);
-//        cout << "Redirection" << endl;
     } else if (std::find(tokens.begin(), tokens.end(), "|") != tokens.end()) {
         implement_mul_pipe(tokens);
-//        cout << "Piping" << endl;
     } else {
         implement_other_commands(tokens);
-        //cout << "No valid token found" << endl;
     }
     // if (input == "ls") {
     //     implement_ls(tokens.);
