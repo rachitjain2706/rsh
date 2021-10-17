@@ -3,13 +3,14 @@
 #include <string>
 #include <filesystem>
 #include <sstream>
-#include "perform_command.h"
 #include <vector>
 #include <sys/fcntl.h>
-#include <csignal>
 #include "util.h"
 #include "stdlib.h"
 #include "cstring"
+#include <algorithm>
+#include <sys/wait.h>
+#include <signal.h>
 
 using namespace std;
 
@@ -84,7 +85,7 @@ void register_signal_handlers() {
 }
 
 int implement_cd(vector<string> tokens) {
-    if (tokens[1].empty()) {
+    if (tokens.size() == 1 || tokens[1].empty()) {
         fprintf(stderr, "Error: invalid command\n");
         fflush(stderr);
     } else if (tokens.size() > 2) {
@@ -522,13 +523,23 @@ int implement_cat(vector<string> tokens) {
                 if (tokens.size() == i + 1) {
                     fprintf(stderr, "Error: invalid command\n");
                     fflush(stderr);
-                    return 1;
+                    exit(EXIT_FAILURE);
+                }
+                if (flag1) {
+                    fprintf(stderr, "Error: invalid command\n");
+                    fflush(stderr);
+                    exit(EXIT_FAILURE);
                 }
                 inp_path = tokens[i + 1];
                 if (access(convert_string_to_char(inp_path), F_OK) != 0) {
                     fprintf(stderr, "Error: invalid file\n");
                     fflush(stderr);
-                    return 1;
+                    exit(EXIT_FAILURE);
+                }
+                if (tokens.size() > i + 2 && tokens[i + 2] != ">" && tokens[i + 2] != ">>") {
+                    fprintf(stderr, "Error: invalid command\n");
+                    fflush(stderr);
+                    exit(EXIT_FAILURE);
                 }
                 flag1 = true;
                 continue;
@@ -541,9 +552,19 @@ int implement_cat(vector<string> tokens) {
                 if (tokens.size() == i + 1) {
                     fprintf(stderr, "Error: invalid command\n");
                     fflush(stderr);
-                    return 1;
+                    exit(EXIT_FAILURE);
+                }
+                if (flag2) {
+                    fprintf(stderr, "Error: invalid command\n");
+                    fflush(stderr);
+                    exit(EXIT_FAILURE);
                 }
                 out_path = tokens[i + 1];
+                if (tokens.size() > i + 2) {
+                    fprintf(stderr, "Error: invalid command\n");
+                    fflush(stderr);
+                    exit(EXIT_FAILURE);
+                }
                 flag2 = true;
                 continue;
             }
@@ -597,6 +618,13 @@ int implement_cat(vector<string> tokens) {
     } else {
         do {
             wpid = waitpid(pid, &status, WUNTRACED);
+            if (WIFSTOPPED(status)) {
+                cout << "Process stopped - " << pid << endl;
+                cmds.push_back(tokens);
+                jobs.push_back(pid);
+                display.push_back(true);
+                next_index++;
+            }
         } while (!WIFEXITED(status) && !WIFSIGNALED(status));
     }
 //    execvp(inps[0], inps);
@@ -631,7 +659,7 @@ int implement_other_commands(vector<string> tokens) {
         signal(SIGTERM, SIG_DFL);
         if (execvp(inps[0], inps) == -1) {
 //            perror("Error: Invalid command");
-            fprintf(stderr, "Error: invalid command");
+            fprintf(stderr, "Error: invalid program\n");
             fflush(stderr);
             exit(EXIT_FAILURE);
         }
@@ -687,7 +715,7 @@ int implement_exit(vector<string> tokens) {
             return 1;
         }
     }
-    cout << endl;
+//    cout << endl;
     fflush(stdout);
     exit(1);
 }
@@ -723,21 +751,50 @@ int implement_fg(vector<string> tokens) {
             len++;
         }
     }
-    if (len <= 0 || (len < index - 1) || index == 0) {
+    if (len <= 0 || (len < index - 1) || index == 0 || !display[index - 1]) {
         fprintf(stderr, "Error: invalid job\n");
         fflush(stderr);
         return 1;
-//        exit(EXIT_FAILURE);
     }
-//    cmds.erase(std::remove(cmds.begin(), cmds.end(), index-1), cmds.end());
-//    cmds.erase(std::next(cmds.begin(), index-1), std::next(cmds.begin(), index));
-//    jobs.erase(std::next(jobs.begin(), index-1), std::next(jobs.begin(), index));
-//    jobs.erase(std::remove(jobs.begin(), jobs.end(), index-1), jobs.end());
     display[index - 1] = false;
+    kill(jobs[index-1], SIGCONT);
+    int status = 0;
+    int wpid = waitpid(jobs[index-1], &status, WUNTRACED);
+    if (WIFSTOPPED(status)) {
+        jobs[index - 1] = wpid;
+        display[index - 1] = true;
+    }
     return 1;
 }
 
 bool is_keyword(string input) {
+
+    char *x = static_cast<char *>(malloc(sizeof(char) * (input.size() + 1)));
+    std::strcpy(x, input.c_str());
+    char *first = strtok_r(x, "|", &x);
+    int ind = 0;
+    int oi = 100000;
+    vector<char *> ins;
+    while (first && strlen(first) > 0 && strcmp(first, "\n") != 0 && strcmp(first, " ") != 0) {
+        ins.push_back(first);
+        if (strstr(first, "<") != NULL && ind != 0) {
+            fprintf(stderr, "Error: invalid command\n");
+            fflush(stderr);
+            return false;
+        }
+
+        if (strstr(first, ">") != NULL || strstr(first, ">>") != NULL) {
+            oi = min(oi, ind);
+        }
+        first = strtok_r(x, "|", &x);
+        ind++;
+    }
+    if (ind - 1 != oi && oi != 100000) {
+        fprintf(stderr, "Error: invalid command\n");
+        fflush(stderr);
+        return false;
+    }
+
     vector<string> tokens = word_separation(input);
     if (tokens[0] == "cd") {
         implement_cd(tokens);
@@ -748,17 +805,18 @@ bool is_keyword(string input) {
     } else if (tokens[0] == "fg") {
         implement_fg(tokens);
     } else if (std::find(tokens.begin(), tokens.end(), "<<") != tokens.end()) {
+//        cout << std::find(tokens.begin(), tokens.end(), "<<") << endl;
         fprintf(stderr, "Error: invalid command\n");
         fflush(stderr);
         return false;
+    } else if (std::find(tokens.begin(), tokens.end(), "|") != tokens.end()) {
+        implement_mul_pipe(tokens);
     } else if (std::find(tokens.begin(), tokens.end(), "<") != tokens.end()) {
         implement_cat(tokens);
     } else if (std::find(tokens.begin(), tokens.end(), ">") != tokens.end()) {
         implement_cat(tokens);
     } else if (std::find(tokens.begin(), tokens.end(), ">>") != tokens.end()) {
         implement_cat(tokens);
-    } else if (std::find(tokens.begin(), tokens.end(), "|") != tokens.end()) {
-        implement_mul_pipe(tokens);
     } else {
         implement_other_commands(tokens);
     }

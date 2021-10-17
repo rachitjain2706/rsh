@@ -1,7 +1,8 @@
 #ifndef _UTIL_H_
 #define _UTIL_H_
 
-#include <string>
+#include <cstring>
+#include <string.h>
 #include <iostream>
 
 using namespace std;
