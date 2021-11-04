@@ -373,6 +373,12 @@ int implement_mul_pipe(vector<string> tokens) {
     }
     for (int i = 0; i < num_pipes + 1; i++) {
         wait(&status);
+        if (WIFSTOPPED(status)) {
+            cmds.push_back(tokens);
+            jobs.push_back(pid);
+            display.push_back(true);
+            next_index++;
+        }
     }
 
 
@@ -721,7 +727,6 @@ int implement_other_commands(vector<string> tokens) {
 //            exit(EXIT_FAILURE);
         }
         if (WIFSTOPPED(status)) {
-            cout << "Process stopped - " << pid << endl;
             cmds.push_back(tokens);
             jobs.push_back(pid);
             display.push_back(true);
