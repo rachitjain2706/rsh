@@ -28,6 +28,8 @@ vector<int> jobs;
 vector<bool> display;
 int next_index = 0;
 
+void executeIO(vector<string> tokens);
+
 vector<string> word_separation(string input) {
     string word;
     vector<string> words;
@@ -325,36 +327,37 @@ int implement_mul_pipe(vector<string> tokens) {
         pid = fork();
         if (pid == 0) {
 
+            signal(SIGINT, SIG_DFL);
+            signal(SIGTSTP, SIG_DFL);
+            signal(SIGQUIT, SIG_DFL);
+            signal(SIGTERM, SIG_DFL);
+
             if (index != piping.size() - 1) {
                 if (dup2(pipefd[index * 2 + 1], 1) < 0) {
-                    cout << "DUP2 output" << endl;
-                    cout << endl;
-                    fflush(stdout);
+                    fprintf(stderr, "Error: invalid program\n");
+                    fflush(stderr);
                     exit(EXIT_FAILURE);
                 }
             }
-//            cout << "DUP2 working output " << pipefd[index*2 + 1] << " with index - " << index << endl;
 
             if (index != 0) {
-                /*if (dup2(pipefd[(index - 1)*2], 0) < 0) {
-                    cout << "DUP2 input " << pipefd[(index - 1)*2] << " with index - " << index << endl;
+                if (dup2(pipefd[(index - 1)*2], 0) < 0) {
+                    fprintf(stderr, "Error: invalid program\n");
+                    fflush(stderr);
                     exit(EXIT_FAILURE);
-                }*/
-                dup2(pipefd[(index - 1) * 2], 0);
+                }
             }
-//            cout << "DUP2 working input " << pipefd[(index - 1)*2] << " with index - " << index << endl;
-
-
 
             for (int x = 0; x < 2 * num_pipes; x++) {
                 close(pipefd[x]);
             }
-            if (execvp(piping[index][0], piping[index]) < 0) {
-                cout << "Error in execvp pipe" << endl;
-                cout << endl;
-                fflush(stdout);
+
+            executeIO(pipe_vector[index]);
+            /*if (execvp(piping[index][0], piping[index]) < 0) {
+                fprintf(stderr, "Error: invalid program\n");
+                fflush(stderr);
                 exit(EXIT_FAILURE);
-            }
+            }*/
         } else if (pid < 0) {
             cout << "Error in forking" << endl;
             cout << endl;
@@ -370,6 +373,12 @@ int implement_mul_pipe(vector<string> tokens) {
     }
     for (int i = 0; i < num_pipes + 1; i++) {
         wait(&status);
+        if (WIFSTOPPED(status)) {
+            cmds.push_back(tokens);
+            jobs.push_back(pid);
+            display.push_back(true);
+            next_index++;
+        }
     }
 
 
@@ -512,107 +521,7 @@ int implement_cat(vector<string> tokens) {
     int pid, wpid, status;
     pid = fork();
     if (pid == 0) {
-        int in, out;
-        vector<char *> charVec(tokens.size(), nullptr);
-        string inp_path = "";
-        string out_path = "";
-        string out_append_path = "";
-        bool flag1 = false, flag2 = false, flag3 = false;
-        for (int i = 0; i < tokens.size(); i++) {
-            if (tokens[i] == "<") {
-                if (tokens.size() == i + 1) {
-                    fprintf(stderr, "Error: invalid command\n");
-                    fflush(stderr);
-                    exit(EXIT_FAILURE);
-                }
-                if (flag1) {
-                    fprintf(stderr, "Error: invalid command\n");
-                    fflush(stderr);
-                    exit(EXIT_FAILURE);
-                }
-                inp_path = tokens[i + 1];
-                if (access(convert_string_to_char(inp_path), F_OK) != 0) {
-                    fprintf(stderr, "Error: invalid file\n");
-                    fflush(stderr);
-                    exit(EXIT_FAILURE);
-                }
-                if (tokens.size() > i + 2 && tokens[i + 2] != ">" && tokens[i + 2] != ">>") {
-                    fprintf(stderr, "Error: invalid command\n");
-                    fflush(stderr);
-                    exit(EXIT_FAILURE);
-                }
-                flag1 = true;
-                continue;
-            }
-            if (flag1) {
-                flag1 = false;
-                continue;
-            }
-            if (tokens[i] == ">") {
-                if (tokens.size() == i + 1) {
-                    fprintf(stderr, "Error: invalid command\n");
-                    fflush(stderr);
-                    exit(EXIT_FAILURE);
-                }
-                if (flag2) {
-                    fprintf(stderr, "Error: invalid command\n");
-                    fflush(stderr);
-                    exit(EXIT_FAILURE);
-                }
-                out_path = tokens[i + 1];
-                if (tokens.size() > i + 2) {
-                    fprintf(stderr, "Error: invalid command\n");
-                    fflush(stderr);
-                    exit(EXIT_FAILURE);
-                }
-                flag2 = true;
-                continue;
-            }
-            if (flag2) {
-                flag1 = false;
-                continue;
-            }
-            if (tokens[i] == ">>") {
-                out_append_path = tokens[i + 1];
-                flag3 = true;
-                continue;
-            }
-            if (flag3) {
-                flag3 = false;
-                continue;
-            } else {
-                charVec[i] = &tokens[i][0];
-//            cout << charVec[i] << endl;
-            }
-        }
-        charVec.push_back(NULL);
-
-        char **inps = &charVec[0];
-        if (!inp_path.empty()) {
-            char *in_path = convert_string_to_char(inp_path);
-            in = open(in_path, O_RDONLY);
-            dup2(in, 0);
-            close(in);
-        }
-        if (!out_path.empty()) {
-            char *op_path = convert_string_to_char(out_path);
-            out = open(op_path, O_WRONLY | O_TRUNC | O_CREAT, S_IRUSR | S_IRGRP | S_IWGRP | S_IWUSR);
-            dup2(out, 1);
-            close(out);
-        }
-
-        if (!out_append_path.empty()) {
-            char *op_path = convert_string_to_char(out_append_path);
-            out = open(op_path, O_WRONLY | O_APPEND);
-            dup2(out, 1);
-            close(out);
-        }
-        if (execvp(inps[0], inps) == -1) {
-            perror("Error in cat");
-        }
-        cout << endl;
-        fflush(stdout);
-        exit(EXIT_FAILURE);
+        executeIO(tokens);
     } else if (pid < 0) {
         perror("Error in forking");
     } else {
@@ -629,6 +538,125 @@ int implement_cat(vector<string> tokens) {
     }
 //    execvp(inps[0], inps);
     return 1;
+}
+
+void executeIO(vector<string> tokens) {
+    int in, out;
+    vector<char *> charVec(tokens.size(), nullptr);
+    string inp_path = "";
+    string out_path = "";
+    string out_append_path = "";
+    bool flag1 = false, flag2 = false, flag3 = false;
+    for (int i = 0; i < tokens.size(); i++) {
+        if (tokens[i] == "<") {
+            if (tokens.size() == i + 1) {
+                fprintf(stderr, "Error: invalid command\n");
+                fflush(stderr);
+                exit(EXIT_FAILURE);
+            }
+            if (flag1) {
+                fprintf(stderr, "Error: invalid command\n");
+                fflush(stderr);
+                exit(EXIT_FAILURE);
+            }
+            inp_path = tokens[i + 1];
+            if (access(convert_string_to_char(inp_path), F_OK) != 0) {
+                fprintf(stderr, "Error: invalid file\n");
+                fflush(stderr);
+                exit(EXIT_FAILURE);
+            }
+            if (tokens.size() > i + 2 && tokens[i + 2] != ">" && tokens[i + 2] != ">>") {
+                fprintf(stderr, "Error: invalid command\n");
+                fflush(stderr);
+                exit(EXIT_FAILURE);
+            }
+            flag1 = true;
+            continue;
+        }
+        if (flag1) {
+            flag1 = false;
+            continue;
+        }
+        if (tokens[i] == ">") {
+            if (tokens.size() == i + 1) {
+                fprintf(stderr, "Error: invalid command\n");
+                fflush(stderr);
+                exit(EXIT_FAILURE);
+            }
+            if (flag2) {
+                fprintf(stderr, "Error: invalid command\n");
+                fflush(stderr);
+                exit(EXIT_FAILURE);
+            }
+            out_path = tokens[i + 1];
+            if (tokens.size() > i + 2) {
+                fprintf(stderr, "Error: invalid command\n");
+                fflush(stderr);
+                exit(EXIT_FAILURE);
+            }
+            flag2 = true;
+            continue;
+        }
+        if (flag2) {
+            flag1 = false;
+            continue;
+        }
+        if (tokens[i] == ">>") {
+            out_append_path = tokens[i + 1];
+            flag3 = true;
+            continue;
+        }
+        if (flag3) {
+            flag3 = false;
+            continue;
+        } else {
+            charVec[i] = &tokens[i][0];
+//            cout << charVec[i] << endl;
+        }
+    }
+    charVec.push_back(NULL);
+
+    char **inps = &charVec[0];
+    if (!inp_path.empty()) {
+        char *in_path = convert_string_to_char(inp_path);
+        in = open(in_path, O_RDONLY);
+        dup2(in, 0);
+        close(in);
+    }
+    if (!out_path.empty()) {
+        char *op_path = convert_string_to_char(out_path);
+        out = open(op_path, O_WRONLY | O_TRUNC | O_CREAT, S_IRUSR | S_IRGRP | S_IWGRP | S_IWUSR);
+        dup2(out, 1);
+        close(out);
+    }
+
+    if (!out_append_path.empty()) {
+        char *op_path = convert_string_to_char(out_append_path);
+        out = open(op_path, O_WRONLY | O_APPEND);
+        dup2(out, 1);
+        close(out);
+    }
+    int status = execvp(inps[0], inps);
+    if (status < 0) {
+        if (strncmp(inps[0], "/usr/bin/", strlen("/usr/bin/")) == 0) {
+            char * token, * last;
+            last = token = strtok(inps[0], "/");
+            for (;(token = strtok(NULL, "/")) != NULL; last = token);
+            if (last != nullptr) {
+                if (execvp(last, inps) == -1) {
+                    fprintf(stderr, "Error: invalid program 1\n");
+                    fflush(stderr);
+                    exit(EXIT_FAILURE);
+                }
+            }
+        }
+        fprintf(stderr, "Error: invalid program\n");
+        fflush(stderr);
+        exit(EXIT_FAILURE);
+    }
+    cout << endl;
+    fflush(stdout);
+    exit(EXIT_FAILURE);
 }
 
 int implement_other_commands(vector<string> tokens) {
@@ -658,6 +686,18 @@ int implement_other_commands(vector<string> tokens) {
         signal(SIGQUIT, SIG_DFL);
         signal(SIGTERM, SIG_DFL);
         if (execvp(inps[0], inps) == -1) {
+            if (strncmp(inps[0], "/usr/bin/", strlen("/usr/bin/")) == 0) {
+                char * token, * last;
+                last = token = strtok(inps[0], "/");
+                for (;(token = strtok(NULL, "/")) != NULL; last = token);
+                if (last != nullptr) {
+                    if (execvp(last, inps) == -1) {
+                        fprintf(stderr, "Error: invalid program 1\n");
+                        fflush(stderr);
+                        exit(EXIT_FAILURE);
+                    }
+                }
+            }
 //            perror("Error: Invalid command");
             fprintf(stderr, "Error: invalid program\n");
             fflush(stderr);
@@ -687,7 +727,6 @@ int implement_other_commands(vector<string> tokens) {
 //            exit(EXIT_FAILURE);
         }
         if (WIFSTOPPED(status)) {
-            cout << "Process stopped - " << pid << endl;
             cmds.push_back(tokens);
             jobs.push_back(pid);
             display.push_back(true);
@@ -709,7 +748,6 @@ int implement_exit(vector<string> tokens) {
     }
     for (int i = 0; i < cmds.size(); i++) {
         if (display[i]) {
-//            cout << "Error: there are suspended jobs" << endl;
             fprintf(stderr, "Error: there are suspended jobs\n");
             fflush(stderr);
             return 1;
@@ -805,7 +843,6 @@ bool is_keyword(string input) {
     } else if (tokens[0] == "fg") {
         implement_fg(tokens);
     } else if (std::find(tokens.begin(), tokens.end(), "<<") != tokens.end()) {
-//        cout << std::find(tokens.begin(), tokens.end(), "<<") << endl;
         fprintf(stderr, "Error: invalid command\n");
         fflush(stderr);
         return false;
@@ -877,7 +914,7 @@ int main(int argc, char *argv[]) {
         // if (keyword == false) {
         //     return 0;
         // }
-    } while (1);
+    } while (true);
     cout << endl;
     fflush(stdout);
     return 0;
