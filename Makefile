@@ -1,6 +1,9 @@
 .PHONY: all
 all: 
-	@ g++ -std=c++1y entry.cpp -o nyush
+	@ clang++ -std=c++1y rsh.cc perform_commands.cc util.cc -o nyush
+
+test:
+	@ cp nyush grading && cd grading && ./gradeit.sh myoutputs nyush refout
 
 clean:
 	@ rm nyush
